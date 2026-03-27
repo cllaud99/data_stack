@@ -27,3 +27,14 @@ dbt/logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code — artefatos de ferramenta
+.agents/
+.claude/
+skills-lock.json
+
+# Arquivos privados — não versionar
+.private/
+
+# Samples / binários gerados
+samples/

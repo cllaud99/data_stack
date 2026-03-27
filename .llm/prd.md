@@ -290,17 +290,22 @@ Testes obrigatórios para merge:
 
 ## Fases de Implementação
 
-### Fase 1 — Fundação 🟡 Em andamento
+### Fase 1 — Fundação 🟢 Concluída
 - [x] Docker Compose com perfil `core` (Airflow 3.1.8, MinIO, Redpanda, PostgreSQL, Redis)
-- [x] MinIO configurado com buckets por camada (bronze, silver, gold, checkpoints)
-- [x] Primeiro DAG: `financeiro_diario_ingestao_bcb` — 6 séries BCB → Bronze (JSON + Parquet)
-- [x] Conector BCB API (`dags/connectors/bcb.py`)
-- [x] Utilitários de storage MinIO (`dags/utils/storage.py`)
-- [ ] dbt configurado, primeiro modelo Silver
+- [x] MinIO configurado com buckets por camada (landing, bronze, silver, gold)
+- [x] DAG `cnpj_ingestao_receita_federal` — 37 arquivos zip → landing + bronze (Parquet/Snappy)
+- [x] Conector Receita Federal WebDAV (`plugins/connectors/receita_federal.py`) + schemas de 10 tabelas
+- [x] Utilitários de storage MinIO (`plugins/utils/storage.py`) — upload, download, Parquet, keys Hive-style
+- [x] Código compartilhado em `plugins/` (antipattern de colocar em `dags/` corrigido)
+- [x] Metadados de rastreabilidade em todos os Parquets (`_fonte`, `_competencia`, `_arquivo_origem`, `_data_extracao`)
 
-### Fase 2 — Lakehouse ⬜ Pendente
-- [ ] Iceberg + Dremio operacional
-- [ ] Arquitetura medallion completa (Bronze → Silver → Gold)
+### Fase 2 — Lakehouse 🟡 Em andamento
+- [x] Dremio + Nessie operacionais (profile analytics)
+- [ ] MinIO configurado como source S3 no Dremio
+- [ ] Nessie configurado como catalog Iceberg no Dremio
+- [ ] dbt-core + dbt-dremio configurado
+- [ ] Primeiro modelo Silver: `stg_cnpj__empresas` (Iceberg via Dremio)
+- [ ] Arquitetura medallion completa (Bronze Parquet → Silver Iceberg → Gold Iceberg)
 - [ ] ClickHouse recebendo camada Gold
 - [ ] Great Expectations com suites por domínio
 

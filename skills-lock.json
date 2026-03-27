@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "skills": {
+    "airflow-dag-patterns": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "computedHash": "a5d2cbacf7c7066e7ae2dde1b852d4658298b35e9823ba2fd269733116ddbf56"
+    },
+    "api-patterns": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "computedHash": "31adfab8a9be63c445dfdb37404d8088c70330477f73a5cfec73fc0c07a0579c"
+    },
+    "brainstorming": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "computedHash": "8df9b47092524833138b58682d03f2e153a242e550d1693657afdbee0cc9cdb0"
+    },
+    "data-engineer": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "computedHash": "b66e14f8cc9f1112bd552ff78965b345ff91286d9800a24af734c63b40fba060"
+    },
+    "docker-patterns": {
+      "source": "affaan-m/everything-claude-code",
+      "sourceType": "github",
+      "computedHash": "2750c564c7b600fbbfd44de2c693955c677c18c872d06019fa896ab770c69ed9"
+    },
+    "pptx-official": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "computedHash": "7531429b3f8605ce612f5d50acb5c58f45959bcf5d1de0f133e3569e69bb7df2"
+    }
+  }
+}

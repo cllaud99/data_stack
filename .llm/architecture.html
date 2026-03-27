@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Local Data Stack — Arquitetura Técnica</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0d1117;
+      --surface:     #161b22;
+      --border:      #30363d;
+      --text:        #e6edf3;
+      --muted:       #8b949e;
+      --accent:      #58a6ff;
+
+      /* layer palette */
+      --c-source:    #1c2d3a;
+      --c-ingest:    #1c2a1c;
+      --c-bronze:    #2d2010;
+      --c-silver:    #1a1a2e;
+      --c-gold:      #2d1f00;
+      --c-consume:   #1e1a2e;
+      --c-cross:     #1a1f2e;
+
+      /* profile colours */
+      --core:        #1f6feb;
+      --core-bg:     rgba(31,111,235,.12);
+      --analytics:   #8957e5;
+      --analytics-bg:rgba(137,87,229,.12);
+      --ai:          #2ea043;
+      --ai-bg:       rgba(46,160,67,.12);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      line-height: 1.4;
+      padding: 24px 16px 48px;
+      min-width: 900px;
+    }
+
+    /* ── HEADER ── */
+    header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+    header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -.5px;
+      color: var(--text);
+    }
+    header p {
+      color: var(--muted);
+      margin-top: 6px;
+      font-size: .875rem;
+    }
+    .title-bar {
+      display: inline-block;
+      background: linear-gradient(135deg,#1f6feb22,#8957e522,#2ea04322);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 32px;
+      margin-bottom: 4px;
+    }
+
+    /* ── OUTER GRID ── */
+    .outer {
+      display: grid;
+      grid-template-columns: 1fr 120px;
+      gap: 12px;
+      max-width: 1300px;
+      margin: 0 auto;
+    }
+
+    /* ── MAIN COLUMN ── */
+    .main-col { display: flex; flex-direction: column; gap: 0; }
+
+    /* ── LAYER CARD ── */
+    .layer {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      position: relative;
+      transition: box-shadow .2s;
+    }
+    .layer:hover { box-shadow: 0 0 0 1px var(--accent)22; }
+
+    .layer-source  { background: var(--c-source);  }
+    .layer-ingest  { background: var(--c-ingest);  }
+    .layer-bronze  { background: var(--c-bronze);  }
+    .layer-silver  { background: var(--c-silver);  }
+    .layer-gold    { background: var(--c-gold);    }
+    .layer-consume { background: var(--c-consume); }
+
+    .layer-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .layer-badge {
+      font-size: .65rem;
+      font-weight: 700;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid currentColor;
+      opacity: .8;
+    }
+    .layer-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .layer-sub {
+      font-size: .72rem;
+      color: var(--muted);
+      margin-left: auto;
+    }
+
+    .tools { display: flex; flex-wrap: wrap; gap: 8px; }
+
+    /* ── TOOL PILL ── */
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: #ffffff08;
+      font-size: .78rem;
+      font-weight: 500;
+      white-space: nowrap;
+      transition: background .15s, border-color .15s;
+      cursor: default;
+    }
+    .pill:hover { background: #ffffff14; border-color: #58a6ff66; }
+    .pill .ico  { font-size: 1rem; line-height: 1; }
+    .pill .ver  {
+      font-size: .65rem;
+      background: #ffffff18;
+      border-radius: 3px;
+      padding: 1px 4px;
+      color: var(--muted);
+      margin-left: 2px;
+    }
+
+    /* profile tint on pills */
+    .core-pill      { border-color: #1f6feb55; }
+    .analytics-pill { border-color: #8957e555; }
+    .ai-pill        { border-color: #2ea04355; }
+
+    /* ── CONNECTOR ARROWS ── */
+    .arrow-row {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 32px;
+      position: relative;
+    }
+    .arrow-line {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+    }
+    .arrow-stem {
+      width: 2px;
+      height: 16px;
+      background: linear-gradient(to bottom, var(--accent)88, var(--accent));
+      animation: flow-down 1.2s linear infinite;
+      background-size: 100% 200%;
+    }
+    .arrow-head {
+      width: 0; height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 9px solid var(--accent);
+    }
+    @keyframes flow-down {
+      0%   { background-position: 0 -100%; }
+      100% { background-position: 0 100%; }
+    }
+
+    /* ── SIDE COLUMN (cross-cutting bars) ── */
+    .side-col {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    .cross-bar {
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--c-cross);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 6px;
+      font-size: .7rem;
+      font-weight: 700;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      color: var(--muted);
+      cursor: default;
+      transition: background .2s;
+    }
+    .cross-bar:hover { background: #1f2733; color: var(--text); }
+    .cross-bar .bar-ico { font-size: 1rem; writing-mode: horizontal-tb; }
+    .cross-bar .bar-tools {
+      font-size: .6rem;
+      font-weight: 400;
+      letter-spacing: 0;
+      opacity: .7;
+      text-transform: none;
+    }
+    .cross-orch { border-color: #e3b341aa; }
+    .cross-obs  { border-color: #f7853055; }
+    .cross-ci   { border-color: #3fb95055; }
+
+    /* spacer to align cross bars with layers */
+    .spacer-arrow { flex-shrink: 0; height: 32px; }
+
+    /* ── LEGEND ── */
+    .legend {
+      max-width: 1300px;
+      margin: 24px auto 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 20px;
+      background: var(--surface);
+    }
+    .legend-title {
+      font-size: .75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      color: var(--muted);
+      margin-right: 8px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: .8rem;
+    }
+    .legend-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .legend-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-left: 4px;
+    }
+    .legend-pill {
+      font-size: .65rem;
+      padding: 2px 7px;
+      border-radius: 10px;
+      border: 1px solid;
+      background: #ffffff08;
+    }
+    .lp-core      { color: #58a6ff; border-color: #1f6feb88; }
+    .lp-analytics { color: #bc8cff; border-color: #8957e588; }
+    .lp-ai        { color: #56d364; border-color: #2ea04388; }
+
+    /* ── FLOW PATH (subtle background line) ── */
+    .flow-label {
+      font-size: .62rem;
+      color: var(--accent);
+      font-weight: 600;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+      opacity: .7;
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 960px) {
+      .outer { grid-template-columns: 1fr 90px; }
+      .pill  { font-size: .72rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ╔══════════════ HEADER ══════════════╗ -->
+<header>
+  <div class="title-bar">
+    <h1>🗄️ Local Data Stack — Arquitetura Técnica</h1>
+  </div>
+  <p>Plataforma local de dados · custo zero · stack completa · dark mode</p>
+</header>
+
+<!-- ╔══════════════ DIAGRAM ══════════════╗ -->
+<div class="outer">
+
+  <!-- ── MAIN LAYERS COLUMN ── -->
+  <div class="main-col">
+
+    <!-- ① FONTES DE DADOS -->
+    <div class="layer layer-source">
+      <div class="layer-header">
+        <span class="layer-badge" style="color:#79c0ff; border-color:#79c0ff;">① Fontes de Dados</span>
+        <span class="layer-title">FONTES DE DADOS</span>
+        <span class="layer-sub">APIs Públicas · Datasets · Webhooks</span>
+      </div>
+      <div class="tools">
+        <div class="pill"><span class="ico">🏦</span> BCB API</div>
+        <div class="pill"><span class="ico">📊</span> IBGE API</div>
+        <div class="pill"><span class="ico">📈</span> Yahoo Finance</div>
+        <div class="pill"><span class="ico">🐙</span> GitHub API</div>
+        <div class="pill"><span class="ico">🗂️</span> Datasets (CSV / Parquet)</div>
+        <div class="pill"><span class="ico">🪝</span> Webhooks (HTTP)</div>
+      </div>
+    </div>
+
+    <div class="arrow-row">
+      <div class="arrow-line">
+        <div class="arrow-stem"></div>
+        <div class="arrow-head"></div>
+      </div>
+      <span class="flow-label" style="margin-left:10px;">Extração</span>
+    </div>
+
+    <!-- ② INGESTÃO -->
+    <div class="layer layer-ingest">
+      <div class="layer-header">
+        <span class="layer-badge" style="color:#7ee787; border-color:#7ee787;">② Ingestão</span>
+        <span class="layer-title">INGESTÃO</span>
+        <span class="layer-sub">Batch · CDC · Streaming</span>
+      </div>
+      <div class="tools">
+        <div class="pill core-pill"><span class="ico">🐍</span> Python Connectors</div>
+        <div class="pill analytics-pill"><span class="ico">🔄</span> Airbyte OSS<span class="ver">v0.63</span></div>
+        <div class="pill ai-pill"><span class="ico">⚡</span> FastAPI Webhooks<span class="ver">0.115</span></div>
+        <div class="pill core-pill"><span class="ico">🔴</span> Redpanda<span class="ver">v24.3</span></div>
+      </div>
+    </div>
+
+    <div class="arrow-row">
+      <div class="arrow-line">
+        <div class="arrow-stem"></div>
+        <div class="arrow-head"></div>
+      </div>
+      <span class="flow-label" style="margin-left:10px;">Raw Load</span>
+    </div>
+
+    <!-- ③ BRONZE -->
+    <div class="layer layer-bronze">
+      <div class="layer-header">
+        <span class="layer-badge" style="color:#d29922; border-color:#d29922;">③ Bronze</span>
+        <span class="layer-title">BRONZE — Raw</span>
+        <span class="layer-sub">Object Storage · Table Format · Catalog</span>
+      </div>
+      <div class="tools">
+        <div class="pill core-pill"><span class="ico">🪣</span> MinIO S3<span class="ver">RELEASE.2024</span></div>
+        <div class="pill analytics-pill"><span class="ico">🧊</span> Apache Iceberg<span class="ver">1.6</span></div>
+        <div class="pill analytics-pill"><span class="ico">🚀</span> Dremio<span class="ver">24.3</span></div>
+        <div class="pill analytics-pill"><span class="ico">🏔️</span> Nessie Catalog<span class="ver">0.90</span></div>
+      </div>
+    </div>
+
+    <div class="arrow-row">
+      <div class="arrow-line">
+        <div class="arrow-stem"></div>
+        <div class="arrow-head"></div>
+      </div>
+      <span class="flow-label" style="margin-left:10px;">Transform</span>
+    </div>
+
+    <!-- ④ SILVER -->
+    <div class="layer layer-silver">
+      <div class="layer-header">
+        <span class="layer-badge" style="color:#a5d6ff; border-color:#a5d6ff;">④ Silver</span>
+        <span class="layer-title">SILVER — Refined</span>
+        <span class="layer-sub">Transformação · Qualidade</span>
+      </div>
+      <div class="tools">
+        <div class="pill analytics-pill"><span class="ico">🔧</span> dbt Core<span class="ver">1.8</span></div>
+        <div class="pill analytics-pill"><span class="ico">✅</span> Great Expectations<span class="ver">0.18</span></div>
+      </div>
+    </div>
+
+    <div class="arrow-row">
+      <div class="arrow-line">
+        <div class="arrow-stem"></div>
+        <div class="arrow-head"></div>
+      </div>
+      <span class="flow-label" style="margin-left:10px;">Aggregate</span>
+    </div>
+
+    <!-- ⑤ GOLD -->
+    <div class="layer layer-gold">
+      <div class="layer-header">
+        <span class="layer-badge" style="color:#ffa657; border-color:#ffa657;">⑤ Gold</span>
+        <span class="layer-title">GOLD — Serving</span>
+        <span class="layer-sub">OLAP · Consultas analíticas de alta performance</span>
+      </div>
+      <div class="tools">
+        <div class="pill analytics-pill"><span class="ico">🖱️</span> ClickHouse<span class="ver">24.12</span></div>
+      </div>
+    </div>
+
+    <div class="arrow-row">
+      <div class="arrow-line">
+        <div class="arrow-stem"></div>
+        <div class="arrow-head"></div>
+      </div>
+      <span class="flow-label" style="margin-left:10px;">Serve / Discover</span>
+    </div>
+
+    <!-- ⑥ CONSUMO & DISCOVERY -->
+    <div class="layer layer-consume">
+      <div class="layer-header">
+        <span class="layer-badge" style="color:#d2a8ff; border-color:#d2a8ff;">⑥ Consumo</span>
+        <span class="layer-title">CONSUMO &amp; DISCOVERY</span>
+        <span class="layer-sub">BI · Catálogo · Agente IA</span>
+      </div>
+      <div class="tools">
+        <div class="pill analytics-pill"><span class="ico">📊</span> Apache Superset<span class="ver">4.1</span></div>
+        <div class="pill analytics-pill"><span class="ico">🗂️</span> OpenMetadata<span class="ver">1.4</span></div>
+        <div class="pill analytics-pill"><span class="ico">🔍</span> Elasticsearch<span class="ver">8.13</span></div>
+        <div class="pill ai-pill"><span class="ico">🤖</span> FastAPI Agent<span class="ver">0.115</span></div>
+        <div class="pill ai-pill"><span class="ico">🦙</span> Ollama + Qwen2.5-Coder<span class="ver">14B</span></div>
+        <div class="pill ai-pill"><span class="ico">🧠</span> ChromaDB<span class="ver">0.5</span></div>
+        <div class="pill ai-pill"><span class="ico">⛓️</span> LangChain<span class="ver">0.3</span></div>
+      </div>
+    </div>
+
+  </div><!-- /main-col -->
+
+  <!-- ── SIDE CROSS-CUTTING BARS ── -->
+  <div class="side-col">
+
+    <!-- spacer: 1 layer height (Fontes) -->
+    <!-- We use a flex-grow trick: each bar grows proportional to its "span" -->
+    <!-- We'll do it with hard-coded flex-basis approximations -->
+
+    <div class="cross-bar cross-orch" style="flex: 4 0 0; min-height:120px;">
+      <span class="bar-ico">⚙️</span>
+      <span>ORQUESTRAÇÃO</span>
+      <span class="bar-tools">Airflow 3.1.8</span>
+      <span class="bar-tools">api-server</span>
+      <span class="bar-tools">scheduler</span>
+      <span class="bar-tools">worker</span>
+      <span class="bar-tools">triggerer</span>
+      <span class="bar-tools">dag-processor</span>
+      <span class="bar-tools">Redis</span>
+      <span class="bar-tools">PostgreSQL</span>
+    </div>
+
+    <div style="height:12px; flex-shrink:0;"></div>
+
+    <div class="cross-bar cross-obs" style="flex: 3 0 0; min-height:80px;">
+      <span class="bar-ico">📡</span>
+      <span>OBSERVABILIDADE</span>
+      <span class="bar-tools">Prometheus</span>
+      <span class="bar-tools">Grafana</span>
+    </div>
+
+    <div style="height:12px; flex-shrink:0;"></div>
+
+    <div class="cross-bar cross-ci" style="flex: 2 0 0; min-height:60px;">
+      <span class="bar-ico">🔁</span>
+      <span>CI / CD</span>
+      <span class="bar-tools">GitHub Actions</span>
+      <span class="bar-tools">dbt tests</span>
+      <span class="bar-tools">Great Expectations</span>
+    </div>
+
+  </div><!-- /side-col -->
+
+</div><!-- /outer -->
+
+<!-- ╔══════════════ LEGEND ══════════════╗ -->
+<div class="legend">
+  <span class="legend-title">Docker Profiles</span>
+
+  <div class="legend-item">
+    <div class="legend-dot" style="background:var(--core);"></div>
+    <strong style="color:#58a6ff;">core</strong>
+    <div class="legend-pills">
+      <span class="legend-pill lp-core">Airflow</span>
+      <span class="legend-pill lp-core">Redis</span>
+      <span class="legend-pill lp-core">PostgreSQL</span>
+      <span class="legend-pill lp-core">MinIO</span>
+      <span class="legend-pill lp-core">Redpanda</span>
+    </div>
+  </div>
+
+  <div class="legend-item">
+    <div class="legend-dot" style="background:var(--analytics);"></div>
+    <strong style="color:#bc8cff;">analytics</strong>
+    <div class="legend-pills">
+      <span class="legend-pill lp-analytics">Dremio</span>
+      <span class="legend-pill lp-analytics">ClickHouse</span>
+      <span class="legend-pill lp-analytics">Elasticsearch</span>
+      <span class="legend-pill lp-analytics">OpenMetadata</span>
+      <span class="legend-pill lp-analytics">Prometheus</span>
+      <span class="legend-pill lp-analytics">Grafana</span>
+      <span class="legend-pill lp-analytics">Superset</span>
+    </div>
+  </div>
+
+  <div class="legend-item">
+    <div class="legend-dot" style="background:var(--ai);"></div>
+    <strong style="color:#56d364;">ai</strong>
+    <div class="legend-pills">
+      <span class="legend-pill lp-ai">Ollama</span>
+      <span class="legend-pill lp-ai">ChromaDB</span>
+      <span class="legend-pill lp-ai">FastAPI Agent</span>
+      <span class="legend-pill lp-ai">LangChain</span>
+    </div>
+  </div>
+
+  <span style="margin-left:auto; font-size:.65rem; color:var(--muted);">
+    Gerado em 2026-03-26 · Local Data Stack
+  </span>
+</div>
+
+</body>
+</html>

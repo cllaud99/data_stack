@@ -13,13 +13,18 @@ x-airflow-common: &airflow-common
     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/airflow
     AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
     AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
-    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+    AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
     AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
     AIRFLOW__METRICS__STATSD_ON: "true"
     AIRFLOW__METRICS__STATSD_HOST: prometheus
     AIRFLOW__METRICS__STATSD_PORT: "9125"
+    # Airflow 3.x: worker comunica com API server via HTTP (não via localhost)
+    # Airflow 3.x: chave compartilhada para assinar/validar JWTs de execução de tasks
+    # Sem isso cada processo gera os.urandom(16) próprio → scheduler e API server discordam
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_SECRET_KEY}
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-webserver:8080/execution/
   volumes:
     - ../airflow/dags:/opt/airflow/dags
     - ../airflow/logs:/opt/airflow/logs
@@ -127,8 +132,9 @@ services:
       - --rpc-addr redpanda:33145
       - --advertise-rpc-addr redpanda:33145
       - --mode dev-container
-      - --smp 2
-      - --memory 768M
+      - --smp 1
+      - --memory 512M
+      - --reserve-memory 0M
       - --default-log-level=warn
     volumes:
       - redpanda_data:/var/lib/redpanda/data
@@ -249,9 +255,25 @@ services:
 
   # ╔══════════════════════════════════════════════════════════════════════════╗
   # ║  PROFILE: analytics                                                     ║
-  # ║  Dremio, ClickHouse, OpenMetadata, Superset, Grafana, Prometheus        ║
+  # ║  Dremio, Nessie, ClickHouse, OpenMetadata, Superset, Grafana, Prometheus ║
   # ║  Uso: docker compose --profile core --profile analytics up -d           ║
   # ╚══════════════════════════════════════════════════════════════════════════╝
+
+  nessie:
+    image: ghcr.io/projectnessie/nessie:0.99.0
+    profiles: [analytics]
+    ports:
+      - "127.0.0.1:19120:19120"  # API REST + UI
+    environment:
+      QUARKUS_PROFILE: prod
+      NESSIE_VERSION_STORE_TYPE: IN_MEMORY
+    networks:
+      - analytics-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:19120/api/v2/config || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   dremio:
     image: dremio/dremio-oss:25.2.0
@@ -265,6 +287,9 @@ services:
     environment:
       DREMIO_JAVA_SERVER_EXTRA_OPTS: >-
         -Dpaths.dist=file:///opt/dremio/data/dist
+    depends_on:
+      nessie:
+        condition: service_healthy
     networks:
       - core-net
       - analytics-net
@@ -492,10 +517,16 @@ services:
 networks:
   core-net:
     driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: "1450"
   analytics-net:
     driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: "1450"
   ai-net:
     driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: "1450"
 
 # ─── Volumes ──────────────────────────────────────────────────────────────────
 volumes:

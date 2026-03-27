@@ -33,6 +33,16 @@ _ACCESS_KEY = os.environ.get("MINIO_ROOT_USER", "minioadmin")
 _SECRET_KEY = os.environ.get("MINIO_ROOT_PASSWORD", "changeme")
 
 
+def ensure_bucket(bucket: str) -> None:
+    """Cria o bucket se não existir. Idempotente — seguro chamar múltiplas vezes."""
+    client = _get_client()
+    try:
+        client.head_bucket(Bucket=bucket)
+    except client.exceptions.ClientError:
+        client.create_bucket(Bucket=bucket)
+        log.info("Bucket criado: %s", bucket)
+
+
 def _get_client() -> boto3.client:
     return boto3.client(
         "s3",

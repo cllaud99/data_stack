@@ -290,6 +290,34 @@ services:
     depends_on:
       nessie:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "ss -tnlp 2>/dev/null | grep -q ':9047' || netstat -tnlp 2>/dev/null | grep -q ':9047'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - core-net
+      - analytics-net
+
+  dremio-init:
+    build:
+      context: ./scripts
+      dockerfile: Dockerfile.dremio-init
+    profiles: [analytics]
+    environment:
+      DREMIO_URL: http://dremio:9047
+      DREMIO_ADMIN_USER: ${DREMIO_ADMIN_USER:-admin}
+      DREMIO_ADMIN_PASSWORD: ${DREMIO_ADMIN_PASSWORD:-changeme}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-changeme}
+      NESSIE_ENDPOINT: http://nessie:19120/api/v2
+      WAREHOUSE_BUCKET: warehouse
+    depends_on:
+      dremio:
+        condition: service_started
+    restart: "no"
     networks:
       - core-net
       - analytics-net
@@ -403,14 +431,10 @@ services:
     environment:
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
       DATABASE_URL: postgresql+psycopg2://postgres:${POSTGRES_PASSWORD}@postgres:5432/superset
-    command: >
+    command: >-
       bash -c "
         superset db upgrade &&
-        superset fab create-admin
-          --username ${SUPERSET_ADMIN_USER:-admin}
-          --firstname Admin --lastname Stack
-          --email admin@datastack.local
-          --password ${SUPERSET_ADMIN_PASSWORD} &&
+        superset fab create-admin --username admin --firstname Admin --lastname Stack --email admin@datastack.local --password $${SUPERSET_ADMIN_PASSWORD} || true &&
         superset init
       "
     depends_on:

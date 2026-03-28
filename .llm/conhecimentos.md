@@ -193,6 +193,107 @@ O `public.php/webdav` é o endpoint WebDAV de shares públicos do Nextcloud (dif
 
 ---
 
+## Dremio 25.x — API e Configuração IaC
+
+### Bootstrap do primeiro usuário
+O endpoint de bootstrap é `PUT /apiv2/bootstrap/firstuser` com header especial `Authorization: _dremionull`. Não é POST, e a autenticação real (token) não existe ainda nesse momento.
+
+```python
+requests.put(
+    f"{DREMIO_URL}/apiv2/bootstrap/firstuser",
+    json={"userName": ..., "firstName": ..., "lastName": ..., "email": ..., "createdAt": int(time()*1000), "password": ...},
+    headers={"Content-Type": "application/json", "Authorization": "_dremionull"},
+)
+```
+
+**Restrições de senha:** mínimo 8 caracteres, ao menos 1 letra e 1 número. `changeme` falha silenciosamente. Use `Admin1234` como padrão no `.env.example`.
+
+Respostas esperadas: `200` (criado), `409` (já existe — idempotente).
+
+### Nomes de campos mudaram entre versões
+Na API v2 do Dremio 25.x os nomes de campo para credenciais dependem do *tipo* de source:
+
+| Source type | Campo chave | Campo secret |
+|---|---|---|
+| `S3` (MinIO) | `accessKey` | `accessSecret` |
+| `NESSIE` | `awsAccessKey` | `awsAccessSecret` |
+
+Misturar os campos gera erro 400 sem mensagem clara.
+
+### MinIO como source S3 — campos obrigatórios
+`customEndpoint` e `enablePathStyleAccess` foram removidos no Dremio 25.x. O endpoint vai em `propertyList`:
+
+```python
+{
+    "type": "S3",
+    "config": {
+        "credentialType": "ACCESS_KEY",
+        "accessKey": "...", "accessSecret": "...",
+        "compatibilityMode": True,          # obrigatório para MinIO
+        "secure": False,
+        "externalBucketList": ["bronze", "landing", "silver", "gold", "warehouse"],
+        "propertyList": [
+            {"name": "fs.s3a.endpoint",              "value": "minio:9000"},
+            {"name": "fs.s3a.path.style.access",     "value": "true"},
+            {"name": "fs.s3a.connection.ssl.enabled", "value": "false"},
+        ],
+    }
+}
+```
+
+### Nessie como catalog Iceberg
+```python
+{
+    "type": "NESSIE",
+    "config": {
+        "nessieEndpoint": "http://nessie:19120/api/v2",
+        "nessieAuthType": "NONE",
+        "awsRootPath": "warehouse",         # bucket raiz para tabelas Iceberg
+        "credentialType": "ACCESS_KEY",
+        "awsAccessKey": "...", "awsAccessSecret": "...",
+        "secure": False,
+        "propertyList": [
+            {"name": "fs.s3a.path.style.access",      "value": "true"},
+            {"name": "fs.s3a.endpoint",                "value": "minio:9000"},
+            {"name": "fs.s3a.connection.ssl.enabled",  "value": "false"},
+            {"name": "dremio.s3.compat",               "value": "true"},
+        ],
+    }
+}
+```
+
+Nessie aparece vazio no Dremio até que o dbt escreva as primeiras tabelas Iceberg no Silver.
+
+### Healthcheck do Dremio
+`curl` não existe na imagem `dremio-oss`. Use verificação de porta:
+```yaml
+test: ["CMD-SHELL", "ss -tnlp 2>/dev/null | grep -q ':9047' || netstat -tnlp 2>/dev/null | grep -q ':9047'"]
+```
+
+`wait_for_dremio()` no script de init deve aceitar `200`, `401`, `403` e `405` — Dremio responde `403` no modo bootstrap e `401` após o admin ser criado.
+
+### Bucket `warehouse` deve existir antes do Nessie
+O Nessie usa `s3://warehouse/` para armazenar tabelas Iceberg. Se o bucket não existe quando o Dremio tenta escrever via Nessie, a operação falha. Criar no `minio-init` junto com os outros buckets:
+```yaml
+mc mb --ignore-existing local/warehouse;
+```
+
+### IaC via `dremio-init` container
+Padrão adotado: build customizado (`Dockerfile.dremio-init`) em vez de bind mount. No WSL2, bind mounts de arquivos recém-criados falham com "file not found" dentro do container. A imagem construída via `build: context:` sempre tem o arquivo.
+
+```yaml
+dremio-init:
+  build:
+    context: ./scripts
+    dockerfile: Dockerfile.dremio-init
+  restart: "no"
+  depends_on:
+    dremio:
+      condition: service_started   # wait_for_dremio() faz o polling real
+```
+
+---
+
 ## Padrões de Engenharia Adotados
 
 ### Dockerfile: `uv` em vez de `pip`
@@ -218,4 +319,4 @@ chore: atualiza Dockerfile para usar uv
 
 ---
 
-*Última atualização: 2026-03-27*
+*Última atualização: 2026-03-28*

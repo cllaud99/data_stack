@@ -113,7 +113,8 @@ services:
         mc mb --ignore-existing local/silver;
         mc mb --ignore-existing local/gold;
         mc mb --ignore-existing local/checkpoints;
-        echo 'Buckets criados: landing, bronze, silver, gold, checkpoints';
+        mc mb --ignore-existing local/warehouse;
+        echo 'Buckets criados: landing, bronze, silver, gold, checkpoints, warehouse';
       "
     networks:
       - core-net

@@ -301,8 +301,9 @@ Testes obrigatórios para merge:
 
 ### Fase 2 — Lakehouse 🟡 Em andamento
 - [x] Dremio + Nessie operacionais (profile analytics)
-- [ ] MinIO configurado como source S3 no Dremio
-- [ ] Nessie configurado como catalog Iceberg no Dremio
+- [x] MinIO configurado como source S3 no Dremio (via `dremio-init` IaC)
+- [x] Nessie configurado como catalog Iceberg no Dremio (via `dremio-init` IaC)
+- [x] Bronze CNPJ (Parquet) visível e consultável no Dremio
 - [ ] dbt-core + dbt-dremio configurado
 - [ ] Primeiro modelo Silver: `stg_cnpj__empresas` (Iceberg via Dremio)
 - [ ] Arquitetura medallion completa (Bronze Parquet → Silver Iceberg → Gold Iceberg)

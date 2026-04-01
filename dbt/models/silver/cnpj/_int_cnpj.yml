@@ -1,0 +1,52 @@
+version: 2
+
+models:
+
+  - name: int_cnpj__estabelecimentos
+    description: >
+      Join central do CNPJ: estabelecimentos enriquecidos com dados de empresa,
+      todos os domínios resolvidos (município, país, CNAE, motivo, natureza jurídica,
+      qualificação do responsável) e flag Simples Nacional/MEI.
+      Grain: um registro por CNPJ completo (14 dígitos).
+      Materializado como VIEW no Dremio Space — o dataset nacional (~60M linhas)
+      é grande demais para hash join local. Iceberg começa nos mrt_* com filtros de negócio.
+    columns:
+      - name: cnpj
+        description: "CNPJ completo — 14 dígitos (basico + ordem + dv)."
+        tests: [not_null, unique]
+      - name: cnpj_basico
+        description: "CNPJ raiz — 8 dígitos, identifica a empresa."
+        tests: [not_null]
+      - name: razao_social
+        description: "Razão social da empresa (vem da tabela empresas, nível CNPJ básico)."
+      - name: cod_situacao_cadastral
+        description: "Código da situação cadastral do estabelecimento."
+        tests: [not_null]
+      - name: uf
+        description: "Unidade federativa do estabelecimento."
+      - name: _competencia
+        description: "Competência (YYYY-MM) do snapshot da Receita Federal."
+        tests: [not_null]
+
+  - name: int_cnpj__socios
+    description: >
+      Quadro societário enriquecido: sócios com qualificação e país resolvidos,
+      e qualificação do representante legal para sócios PJ.
+      Grain: um registro por (cnpj_basico, cnpj_cpf_socio).
+      Materializado como tabela Iceberg incremental no Nessie (merge por cnpj_basico + cnpj_cpf_socio).
+      9M linhas — cabe em memória local.
+    columns:
+      - name: cnpj_basico
+        description: "CNPJ raiz da empresa à qual o sócio pertence."
+        tests: [not_null]
+      - name: cnpj_cpf_socio
+        description: >
+          CPF ou CNPJ do sócio. Sócios anônimos usam '00000000000' como placeholder
+          (convenção da Receita Federal — não é NULL).
+      - name: nome_socio_razao_social
+        description: "Nome ou razão social do sócio."
+      - name: descricao_qualificacao_socio
+        description: "Qualificação do sócio resolvida (ex: Sócio-Administrador, Presidente)."
+      - name: _competencia
+        description: "Competência (YYYY-MM) do snapshot da Receita Federal."
+        tests: [not_null]

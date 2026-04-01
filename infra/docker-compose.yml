@@ -285,9 +285,12 @@ services:
       - "127.0.0.1:32010:32010"  # Arrow Flight
     volumes:
       - dremio_data:/opt/dremio/data
+      - ./config/dremio.conf:/opt/dremio/conf/dremio.conf:ro
     environment:
       DREMIO_JAVA_SERVER_EXTRA_OPTS: >-
         -Dpaths.dist=file:///opt/dremio/data/dist
+        -Xmx8g
+        -XX:MaxDirectMemorySize=10g
     depends_on:
       nessie:
         condition: service_healthy

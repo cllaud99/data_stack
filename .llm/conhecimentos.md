@@ -294,6 +294,93 @@ dremio-init:
 
 ---
 
+## Dremio — Consulta a Dados Bronze (S3/MinIO)
+
+### Por que o path é tão longo no Bronze
+
+Dremio trata o MinIO como um **filesystem puro** — cada pasta vira um schema, cada arquivo vira uma tabela. Ele não detecta automaticamente que pastas com padrão `chave=valor` são partições Hive de uma mesma tabela.
+
+Resultado: para consultar um arquivo Bronze particionado você precisa navegar toda a hierarquia:
+
+```sql
+SELECT * FROM minio.bronze."receita_federal".cnpj."tabela=cnaes"."competencia=2026-03"."part=0000"."data.parquet"
+```
+
+Cada segmento do path é um nível de pasta no MinIO:
+```
+bucket:     bronze
+pasta:      receita_federal/cnpj/
+partição:   tabela=cnaes/competencia=2026-03/part=0000/
+arquivo:    data.parquet
+```
+
+### Como resolver: Promote de pasta no Dremio
+
+É possível clicar com o botão direito em uma pasta no Dremio UI e fazer **"Format Folder"** (ou Promote) para ensiná-lo a ler todas as partições como uma única tabela virtual. Isso funciona para queries ad-hoc no Bronze.
+
+### Por que Iceberg no Silver resolve definitivamente
+
+No Silver (Nessie + Iceberg), o Dremio sabe que é uma tabela — não um conjunto de arquivos. A query vira:
+
+```sql
+SELECT * FROM nessie.silver.cnpj_cnaes
+```
+
+Sem hierarquia de path, sem saber nada de particionamento físico. Esse é o objetivo do lakehouse: abstrair o layout físico do storage.
+
+**Resumo:** Bronze = arquivos no S3 (path explícito). Silver/Gold = tabelas Iceberg (nome simples). O dbt faz essa promoção.
+
+### Porta 5432 bloqueada no WSL2 Docker Desktop
+
+O proxy de port-forwarding do Docker Desktop às vezes trava e não consegue expiar portas para o host Windows — erro: `ports are not available: /forwards/expose returned unexpected status: 500`.
+
+**Fix adotado:** remover o bind `127.0.0.1:5432:5432` do postgres no compose. Containers internos acessam via nome DNS `postgres:5432`. Acesso externo via:
+```bash
+docker exec -it data-stack-postgres-1 psql -U postgres
+```
+
+---
+
+## dbt-dremio — Configuração do profiles.yml
+
+### O que cada opção do `dbt init` significa
+
+| Opção | Valor escolhido | O que é |
+|---|---|---|
+| `software_host` | `localhost` | Endereço do Dremio — dentro do Docker seria `dremio`, mas dbt roda no host |
+| `port` | `9047` | Porta HTTP do Dremio (UI + API REST que o dbt usa) |
+| `user` / `password` | `admin` / `Admin1234` | Credenciais do Dremio |
+| `storage_configuration` | `sources_and_spaces` | Dremio OSS — usa sources S3 + Spaces para views. `enterprise_catalog` é só para Dremio Enterprise/Cloud (Arctic) |
+| `object_storage_source` | `minio` | Nome do source S3 registrado no Dremio — onde o dbt cria os arquivos físicos (Parquet/Iceberg). Deve bater exatamente com o nome na UI do Dremio |
+| `object_storage_path` | `warehouse` | Bucket/pasta dentro do source onde os arquivos são gravados. `warehouse` é o bucket dedicado para Iceberg, alinhado com o Nessie. Sobrescrito por modelo via `config()` |
+| `dremio_space` | `data_stack` | Espaço lógico no Dremio onde as **views** são criadas. Separado do storage físico. Permite navegar `data_stack > silver > cnpj > stg_empresas` na UI |
+| `dremio_space_folder` | `no_schema` | Pasta padrão dentro do espaço para views. Deixado vazio — cada modelo define a sua via `config()` |
+| `threads` | `8` | Paralelismo do dbt. Gargalo real é o Dremio, não o dbt. 8 é confortável para i9 14ª gen |
+
+### Separação física vs lógica no dbt-dremio
+
+```
+object_storage_source + object_storage_path  →  onde os arquivos ficam (MinIO)
+dremio_space + dremio_space_folder           →  onde as views ficam (Dremio UI)
+```
+
+Exemplo de model Silver com config explícita:
+```sql
+{{ config(
+    materialized='incremental',
+    object_storage_path='silver',
+    dremio_space='data_stack',
+    dremio_space_folder='silver/cnpj'
+) }}
+```
+
+### profiles.yml fica em ~/.dbt/ — não no repositório
+
+O `dbt init` gera `~/.dbt/profiles.yml` com credenciais. Não commitar — contém senha.
+Solução para onboarding: manter um `dbt/profiles.yml.example` no repo sem credenciais + target `make dbt-setup` que copia e pede as variáveis.
+
+---
+
 ## Padrões de Engenharia Adotados
 
 ### Dockerfile: `uv` em vez de `pip`
@@ -319,4 +406,4 @@ chore: atualiza Dockerfile para usar uv
 
 ---
 
-*Última atualização: 2026-03-28*
+*Última atualização: 2026-03-30*

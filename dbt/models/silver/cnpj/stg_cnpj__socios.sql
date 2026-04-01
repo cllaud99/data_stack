@@ -6,10 +6,7 @@ SELECT
     NULLIF(TRIM(nome_socio_razao_social), '')            AS nome_socio_razao_social,
     NULLIF(TRIM(cnpj_cpf_socio), '')                     AS cnpj_cpf_socio,
     NULLIF(TRIM(qualificacao_socio), '')                 AS cod_qualificacao_socio,
-    CASE
-        WHEN NULLIF(TRIM(data_entrada_sociedade), '00000000') IS NULL THEN NULL
-        ELSE TO_DATE(TRIM(data_entrada_sociedade), 'YYYYMMDD')
-    END                                                  AS data_entrada_sociedade,
+    {{ parse_date_br('data_entrada_sociedade') }}        AS data_entrada_sociedade,
     NULLIF(TRIM(pais), '')                               AS cod_pais,
     NULLIF(TRIM(representante_legal), '')                AS cpf_representante_legal,
     NULLIF(TRIM(nome_representante), '')                 AS nome_representante,

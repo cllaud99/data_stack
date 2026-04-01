@@ -87,6 +87,8 @@ final AS (
         e.telefone_1,
         e.ddd_2,
         e.telefone_2,
+        e.ddd_fax,
+        e.fax,
         e.email,
 
         -- Datas

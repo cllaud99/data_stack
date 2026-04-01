@@ -1,6 +1,39 @@
 version: 2
 
 models:
+  - name: mrt_cnpj__dinamica_mensal
+    description: >
+      Dinâmica mensal de abertura e fechamento de estabelecimentos por UF e CNAE.
+      Abertura = data_inicio_atividade; Fechamento = data_situacao_cadastral onde
+      situação é baixada (08), inapta (04) ou suspensa (03).
+      Granularidade: mes × uf × cod_cnae_principal. Ideal para análise de tendência
+      e sazonalidade no dashboard e para o agente LLM.
+    config:
+      tags: ["gold", "cnpj", "agregacao", "tendencia"]
+    columns:
+      - name: mes_referencia
+        description: Primeiro dia do mês de referência (DATE_TRUNC month)
+        tests:
+          - not_null
+      - name: uf
+        description: Unidade Federativa
+        tests:
+          - not_null
+      - name: cod_cnae_principal
+        description: Código CNAE principal do estabelecimento
+      - name: descricao_cnae_principal
+        description: Descrição textual do CNAE
+      - name: qtd_aberturas
+        description: Estabelecimentos cujo data_inicio_atividade cai neste mês
+      - name: qtd_baixadas
+        description: Estabelecimentos com situação BAIXADA (08) neste mês — encerramento definitivo
+      - name: qtd_inaptadas
+        description: Estabelecimentos que ficaram INAPTOS (04) neste mês — estado reversível
+      - name: qtd_suspensas
+        description: Estabelecimentos SUSPENSOS (03) neste mês — estado reversível
+      - name: saldo_liquido
+        description: qtd_aberturas - qtd_baixadas. Positivo = crescimento, negativo = retração
+
   - name: mrt_cnpj__estabelecimentos_ativos
     description: >
       Estabelecimentos ativos (cod_situacao_cadastral = '02') com domínios desnormalizados

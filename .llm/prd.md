@@ -304,10 +304,13 @@ Testes obrigatórios para merge:
 - [x] MinIO configurado como source S3 no Dremio (via `dremio-init` IaC)
 - [x] Nessie configurado como catalog Iceberg no Dremio (via `dremio-init` IaC)
 - [x] Bronze CNPJ (Parquet) visível e consultável no Dremio
-- [ ] dbt-core + dbt-dremio configurado
-- [ ] Primeiro modelo Silver: `stg_cnpj__empresas` (Iceberg via Dremio)
-- [ ] Arquitetura medallion completa (Bronze Parquet → Silver Iceberg → Gold Iceberg)
-- [ ] ClickHouse recebendo camada Gold
+- [x] dbt-core 1.9 + dbt-dremio 1.9 configurados (`profiles.yml.example`, `make dbt-setup`)
+- [x] 10 modelos `stg_cnpj__*` (views no Dremio Space `data_stack/silver`)
+- [x] `int_cnpj__socios` — Iceberg incremental no Nessie (~9M linhas) ✓
+- [x] `int_cnpj__estabelecimentos` — view com 7 joins (fatos + 5 domínios desnormalizados)
+- [x] `mrt_cnpj__estabelecimentos_ativos` — modelo Gold criado (Iceberg, filtro ativo ~20M linhas)
+- [ ] `mrt_cnpj__estabelecimentos_ativos` executado com sucesso no Dremio/Nessie
+- [ ] ClickHouse recebendo camada Gold (DAG Airflow sync mrt_* → ClickHouse)
 - [ ] Great Expectations com suites por domínio
 
 ### Fase 3 — Catálogo & Governança ⬜ Pendente
@@ -337,6 +340,22 @@ Testes obrigatórios para merge:
 - [ ] Testes automatizados em todos os domínios
 - [ ] ADRs documentando decisões arquiteturais
 - [ ] Runbooks operacionais
+
+---
+
+## Arquitetura Silver — Decisão de Escala
+
+Para o dataset CNPJ (~60M estabelecimentos), a materialização direta como Iceberg é inviável
+no `int_*` por limitação de memória local (hash join excede o `MaxDirectMemorySize` do Dremio).
+
+**Padrão adotado:**
+- `stg_*` → views (Bronze → typecast/rename, sem dado lido no `dbt run`)
+- `int_*` → views (join de fatos grandes + domínios — lazy evaluation via filter pushdown)
+- `mrt_*` → Iceberg no Nessie (Gold filtrado por negócio: ativos, por UF, por CNAE)
+
+**Por que funciona:** O filtro `cod_situacao_cadastral = '02'` reduz 60M → ~20M linhas
+antes de qualquer join. O Dremio empurra o filtro para a leitura Parquet (predicate pushdown),
+evitando materializar o produto cartesiano completo em memória.
 
 ---
 

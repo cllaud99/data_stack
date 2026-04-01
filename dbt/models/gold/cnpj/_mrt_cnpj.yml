@@ -1,0 +1,48 @@
+version: 2
+
+models:
+  - name: mrt_cnpj__estabelecimentos_ativos
+    description: >
+      Estabelecimentos ativos (cod_situacao_cadastral = '02') com domínios desnormalizados
+      (município, CNAE, natureza jurídica, motivo, país). Primeira tabela Iceberg Gold do
+      domínio CNPJ, materializada no Nessie com ~20M linhas após filtro de ativo.
+    config:
+      tags: ["gold", "cnpj", "iceberg"]
+    columns:
+      - name: cnpj
+        description: CNPJ completo (14 dígitos) — chave única do estabelecimento
+        tests:
+          - unique
+          - not_null
+      - name: cnpj_basico
+        description: Primeiros 8 dígitos do CNPJ (raiz — nível empresa)
+        tests:
+          - not_null
+      - name: razao_social
+        description: Razão social da empresa (nível CNPJ básico)
+      - name: nome_fantasia
+        description: Nome fantasia do estabelecimento
+      - name: cod_situacao_cadastral
+        description: Código da situação cadastral (sempre '02' neste modelo — ativo)
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["02"]
+      - name: descricao_cnae_principal
+        description: Descrição textual do CNAE principal (join com stg_cnpj__cnaes)
+      - name: nome_municipio
+        description: Nome do município (join com stg_cnpj__municipios)
+      - name: descricao_natureza_juridica
+        description: Descrição da natureza jurídica (join com stg_cnpj__naturezas)
+      - name: descricao_motivo_situacao_cadastral
+        description: Descrição do motivo da situação cadastral (join com stg_cnpj__motivos)
+      - name: nome_pais
+        description: Nome do país (para empresas estrangeiras; join com stg_cnpj__paises)
+      - name: uf
+        description: Unidade Federativa do estabelecimento
+      - name: _competencia
+        description: Ano-mês de referência dos dados (YYYYMM) — chave de partição incremental
+        tests:
+          - not_null
+      - name: _data_extracao
+        description: Timestamp de extração do dado na camada Bronze

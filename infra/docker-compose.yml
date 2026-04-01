@@ -61,8 +61,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    ports:
-      - "127.0.0.1:5432:5432"
+    # porta 5432 removida — WSL2 Docker Desktop não consegue expor (porta reservada Windows)
+    # acesso externo via: docker exec -it data-stack-postgres-1 psql -U postgres
     networks:
       - core-net
 

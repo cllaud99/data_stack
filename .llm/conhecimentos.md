@@ -474,4 +474,126 @@ A Receita Federal usa tanto `'00000000'` quanto `'0'` como placeholder de data n
 
 ---
 
-*Última atualização: 2026-03-31*
+---
+
+## dbt-dremio — Estratégia Gold para Datasets Grandes
+
+### Problema: OOM no mrt_* mesmo com filtro na view
+
+Mesmo com `int_cnpj__estabelecimentos` como view e filtro `cod_situacao_cadastral = '02'`
+no `mrt_*`, o Dremio fazia OOM. Causa: o plano de query expandia a view completa (60M linhas)
+antes de aplicar o filtro — o hash join de 60M × 25M (empresas) não cabia em memória.
+
+**Diagnóstico:** o Dremio não garante predicate pushdown através de camadas de view quando
+o filtro é numa coluna da tabela `stg_*` e o modelo Gold referencia a `int_*` view.
+
+### Solução 1: Filter-before-join no mrt_*
+
+Mover o filtro de negócio para o primeiro CTE do `mrt_*`, referenciando diretamente a
+`stg_*`, não a `int_*`. Joins acontecem **depois** do filtro:
+
+```sql
+-- mrt_cnpj__estabelecimentos_ativos
+WITH ativos AS (
+    -- filtra 60M → ~20M ANTES de qualquer join
+    SELECT * FROM {{ ref('stg_cnpj__estabelecimentos') }}
+    WHERE cod_situacao_cadastral = '02'
+),
+empresas AS ( SELECT * FROM {{ ref('stg_cnpj__empresas') }} ),
+...
+SELECT ... FROM ativos
+LEFT JOIN empresas ON ativos.cnpj_basico = empresas.cnpj_basico
+```
+
+**Consequência arquitetural:** `int_cnpj__estabelecimentos` vira passthrough puro da stg
+(sem joins). Os joins de domínio ficam nos `mrt_*`, perto do filtro de negócio.
+
+### Solução 2: Batch por UF com Iceberg MERGE incremental
+
+Para datasets que ainda dão OOM mesmo com filter-before-join (join de 20M × 25M pode
+estourar 10GB direct memory), processar por UF com `--vars`:
+
+```sql
+-- No modelo mrt_*
+WHERE cod_situacao_cadastral = '02'
+{% if var('uf', none) is not none %}
+AND uf = '{{ var("uf") }}'
+{% endif %}
+```
+
+Loop via script:
+```bash
+UFS=(AC AL AM AP BA CE DF ES GO MA MG MS MT PA PB PE PI PR RJ RN RO RR RS SC SE SP TO)
+for UF in "${UFS[@]}"; do
+    dbt run --select mrt_* --vars "{\"uf\": \"$UF\"}" --profiles-dir .
+done
+```
+
+Cada UF faz um MERGE no Iceberg — **idempotente** (re-executar qualquer UF não duplica dados).
+Ao final das 27 UFs, a tabela está completa no Nessie.
+
+**Validação:** AC (menor UF) como smoke test. Se passar (23K linhas em ~50s), o batch é seguro.
+
+### Campos derivados no Gold para facilitar Text2SQL do agente
+
+Em vez de retornar códigos brutos, o Gold desnormaliza e cria campos interpretáveis:
+
+```sql
+-- Porte como texto (o LLM entende "Micro Empresa", não '01')
+CASE emp.cod_porte_empresa
+    WHEN '01' THEN 'Micro Empresa'
+    WHEN '03' THEN 'Empresa de Pequeno Porte'
+    WHEN '05' THEN 'Demais'
+END AS descricao_porte_empresa,
+
+-- Booleanos explícitos (o LLM gera WHERE is_mei = TRUE, não WHERE opcao_pelo_mei = 'S')
+CASE WHEN smp.opcao_pelo_mei = 'S' THEN TRUE ELSE FALSE END AS is_mei,
+
+-- Granularidade temporal explícita (o LLM usa ano_abertura = 2023 não YEAR(data_inicio_atividade))
+YEAR(a.data_inicio_atividade)  AS ano_abertura,
+MONTH(a.data_inicio_atividade) AS mes_abertura,
+```
+
+### FULL OUTER JOIN para métricas com dimensões temporais distintas
+
+`mrt_cnpj__dinamica_mensal` combina **abertura** (`data_inicio_atividade`) e **fechamento**
+(`data_situacao_cadastral`) na mesma linha — mas são eixos de tempo independentes.
+
+**Padrão correto:** dois CTEs separados, cada um com seu GROUP BY temporal, unidos por
+FULL OUTER JOIN na combinação `(mes, uf, cnae)`:
+
+```sql
+WITH aberturas AS (
+    SELECT DATE_TRUNC('month', data_inicio_atividade) AS mes, uf, cod_cnae_principal,
+           COUNT(*) AS qtd_aberturas
+    FROM ... WHERE data_inicio_atividade IS NOT NULL GROUP BY 1, 2, 3
+),
+fechamentos AS (
+    SELECT DATE_TRUNC('month', data_situacao_cadastral) AS mes, uf, cod_cnae_principal,
+           COUNT(*) FILTER (WHERE cod_situacao_cadastral = '08') AS qtd_baixadas
+    FROM ... WHERE cod_situacao_cadastral IN ('03','04','08') GROUP BY 1, 2, 3
+)
+SELECT COALESCE(a.mes, f.mes) AS mes_referencia, ...
+FROM aberturas a FULL OUTER JOIN fechamentos f ON a.mes = f.mes AND a.uf = f.uf AND ...
+```
+
+**Por que não um GROUP BY único:** `data_inicio_atividade` e `data_situacao_cadastral`
+são dimensões temporais diferentes — não dá agrupar ambas no mesmo eixo de tempo.
+
+### Auditoria do layout oficial da Receita Federal (PDF CNPJ)
+
+Campos presentes no layout oficial que merecem atenção:
+
+- **`ddd_fax` / `fax`**: campos oficiais em ESTABELECIMENTOS, fácil omitir — verificar se
+  estão presentes no `stg_*` e repassados no `int_*`
+- **`cod_situacao_cadastral`**: PDF mostra "2 – ATIVA" sem zero-pad, mas dados reais vêm
+  zero-padded ('02'). Documentar no YML com o valor real dos dados
+- **`cod_faixa_etaria`** em SÓCIOS: valores 0-9 (0=não se aplica, 1=0-12 anos, ..., 9=80+)
+- **CPF do sócio já vem mascarado** pela RF (3 primeiros dígitos + 2 DV ocultos) — é
+  requisito legal (Lei 13.473/2017 art. 129 §2). Não requer tratamento no dbt
+- **`cnae_fiscal_secundaria`**: string com múltiplos valores separados por vírgula — não
+  parsear no Silver; explosão em array pode ser feita no Gold se necessário
+
+---
+
+*Última atualização: 2026-04-01*

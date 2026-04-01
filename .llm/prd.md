@@ -304,12 +304,14 @@ Testes obrigatórios para merge:
 - [x] MinIO configurado como source S3 no Dremio (via `dremio-init` IaC)
 - [x] Nessie configurado como catalog Iceberg no Dremio (via `dremio-init` IaC)
 - [x] Bronze CNPJ (Parquet) visível e consultável no Dremio
-- [x] dbt-core 1.9 + dbt-dremio 1.9 configurados (`profiles.yml.example`, `make dbt-setup`)
-- [x] 10 modelos `stg_cnpj__*` (views no Dremio Space `data_stack/silver`)
+- [x] dbt-core 1.11 + dbt-dremio 1.10 configurados (`profiles.yml.example`)
+- [x] 10 modelos `stg_cnpj__*` (views no Dremio Space `data_stack/silver`) + auditoria vs layout oficial RF
 - [x] `int_cnpj__socios` — Iceberg incremental no Nessie (~9M linhas) ✓
-- [x] `int_cnpj__estabelecimentos` — view com 7 joins (fatos + 5 domínios desnormalizados)
-- [x] `mrt_cnpj__estabelecimentos_ativos` — modelo Gold criado (Iceberg, filtro ativo ~20M linhas)
-- [ ] `mrt_cnpj__estabelecimentos_ativos` executado com sucesso no Dremio/Nessie
+- [x] `int_cnpj__estabelecimentos` — view passthrough da stg (joins movidos para mrt_*)
+- [x] `mrt_cnpj__estabelecimentos_ativos` — Gold Iceberg incremental, batch por UF, filtro antes dos joins
+- [x] `mrt_cnpj__dinamica_mensal` — Gold table, abertura + fechamento mensal por UF × CNAE
+- [x] `scripts/run_mrt_por_uf.sh` — automação do batch por UF (27 UFs, MERGE incremental Iceberg)
+- [x] `mrt_cnpj__estabelecimentos_ativos` batch 27 UFs concluído — ~20M linhas no Nessie ✓
 - [ ] ClickHouse recebendo camada Gold (DAG Airflow sync mrt_* → ClickHouse)
 - [ ] Great Expectations com suites por domínio
 
@@ -350,12 +352,16 @@ no `int_*` por limitação de memória local (hash join excede o `MaxDirectMemor
 
 **Padrão adotado:**
 - `stg_*` → views (Bronze → typecast/rename, sem dado lido no `dbt run`)
-- `int_*` → views (join de fatos grandes + domínios — lazy evaluation via filter pushdown)
-- `mrt_*` → Iceberg no Nessie (Gold filtrado por negócio: ativos, por UF, por CNAE)
+- `int_*` → views passthrough da stg (sem joins — joins ficam nos mrt_* pós-filtro)
+- `mrt_*` → Iceberg no Nessie (Gold — filtro de negócio no primeiro CTE, joins depois)
 
-**Por que funciona:** O filtro `cod_situacao_cadastral = '02'` reduz 60M → ~20M linhas
-antes de qualquer join. O Dremio empurra o filtro para a leitura Parquet (predicate pushdown),
-evitando materializar o produto cartesiano completo em memória.
+**Por que funciona:** O filtro é aplicado diretamente sobre a `stg_*` no primeiro CTE
+do `mrt_*`, garantindo que o Dremio processa ~20M linhas antes de qualquer hash join.
+Para datasets que ainda dão OOM, o script `run_mrt_por_uf.sh` processa UF por UF
+(~200K–5M linhas) via MERGE incremental Iceberg — idempotente e re-executável.
+
+**Resultado validado:** `mrt_cnpj__estabelecimentos_ativos` materializado com sucesso
+via batch 27 UFs — 26/27 na primeira rodada, SE retry OK. ~20M linhas no Nessie.
 
 ---
 

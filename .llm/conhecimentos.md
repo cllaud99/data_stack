@@ -364,15 +364,22 @@ object_storage_source + object_storage_path  →  onde os arquivos ficam (MinIO)
 dremio_space + dremio_space_folder           →  onde as views ficam (Dremio UI)
 ```
 
-Exemplo de model Silver com config explícita:
+Exemplo de model Gold (Iceberg via Nessie) com config explícita:
 ```sql
 {{ config(
     materialized='incremental',
+    incremental_strategy='merge',
+    unique_key='cnpj',
+    object_storage_source='nessie',
     object_storage_path='silver',
     dremio_space='data_stack',
-    dremio_space_folder='silver/cnpj'
+    dremio_space_folder='silver'
 ) }}
 ```
+
+### `dremio_space_folder` não aceita barra
+O Dremio rejeita folder names com `/` via a API de catalog (400 Bad Request).
+Usar sempre nome plano: `dremio_space_folder='silver'`, nunca `'silver/cnpj'`.
 
 ### profiles.yml fica em ~/.dbt/ — não no repositório
 
@@ -406,4 +413,65 @@ chore: atualiza Dockerfile para usar uv
 
 ---
 
-*Última atualização: 2026-03-30*
+---
+
+## dbt-dremio — Escala e Limitações de Memória
+
+### MemoryArbiter do Dremio — limite de hash join em single-node
+
+O `MemoryArbiterImpl` do Dremio controla alocação de memória Arrow (off-heap) para execução de queries. Ele cancela queries que excedem o orçamento disponível, mesmo que o host tenha RAM livre.
+
+**Causa raiz:** O Dremio usa Arrow (columnar, off-heap) para buffers de query. O orçamento total é limitado por `MaxDirectMemorySize` da JVM. Em single-node, com dataset CNPJ nacional:
+- `estabelecimentos`: ~60M linhas × ~200 bytes = ~12GB
+- `empresas`: ~25M linhas × ~100 bytes = ~2.5GB
+- Hash join dessas duas exige construir tabela de hash para o lado menor (~2.5GB) + buffer do probe
+
+Com `MaxDirectMemorySize=8g` e overhead do Dremio, não há memória suficiente para o plano de query.
+
+**Configuração adotada** (não resolve o OOM para datasets grandes, mas é a correta):
+```yaml
+# docker-compose.yml — DREMIO_JAVA_SERVER_EXTRA_OPTS
+-Xmx8g -XX:MaxDirectMemorySize=10g
+
+# infra/config/dremio.conf (montado em /opt/dremio/conf/)
+paths.spilling: ["/tmp/dremio/spill"]
+```
+
+**Como configurar via dremio-env:** As variáveis `DREMIO_MAX_HEAP_MEMORY_SIZE_MB` e `DREMIO_MAX_DIRECT_MEMORY_SIZE_MB` no `dremio-env` são a forma oficial — `DREMIO_JAVA_SERVER_EXTRA_OPTS` sobrescreve depois mas o startup script pode duplicar flags.
+
+### Arquitetura adotada para dataset CNPJ nacional (~60M linhas)
+
+O dataset CNPJ completo é grande demais para materialização via hash join local.
+Padrão adotado:
+
+```
+stg_*  →  views    (Bronze → typecast/rename — DDL apenas, dados lidos sob demanda)
+int_*  →  views    (join de tabelas FATO grandes — lazy, filter pushdown pelo Dremio)
+mrt_*  →  Iceberg  (Gold filtrado por negócio — ex: só ativos, por UF, por CNAE)
+```
+
+Exceção: `int_cnpj__socios` (9M linhas, 3 JOINs pequenos) foi materializado como Iceberg incremental no Nessie sem problema.
+
+### Views stg_* — erros de dado aparecem só quando consultadas
+
+`dbt run` em um modelo `materialized='view'` executa apenas `CREATE OR REPLACE VIEW` (DDL).
+O dado real nunca é lido. Erros como `TO_DATE` com valor inválido só aparecem quando outra query usa a view.
+
+**Implicação prática:** O `dbt run` dos stg_* passou com sucesso. O erro de `parse_date_br` com valor `'0'` só apareceu quando o `int_*` consultou a view.
+
+**Fix aplicado no `parse_date_br`:**
+```sql
+{% macro parse_date_br(col) %}
+    CASE
+        WHEN NULLIF(TRIM({{ col }}), '') IS NULL THEN NULL
+        WHEN LENGTH(TRIM({{ col }})) != 8  THEN NULL  -- filtra '0', '00000', etc.
+        WHEN TRIM({{ col }}) = '00000000'  THEN NULL
+        ELSE TO_DATE(TRIM({{ col }}), 'YYYYMMDD')
+    END
+{% endmacro %}
+```
+A Receita Federal usa tanto `'00000000'` quanto `'0'` como placeholder de data nula.
+
+---
+
+*Última atualização: 2026-03-31*

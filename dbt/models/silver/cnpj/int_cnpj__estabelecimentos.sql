@@ -1,5 +1,9 @@
 {{ config(
-    materialized='view',
+    materialized='incremental',
+    incremental_strategy='merge',
+    unique_key=['cnpj_basico', 'cnpj_cpf_socio'],
+    object_storage_source='nessie',
+    object_storage_path='silver',
     dremio_space='data_stack',
     dremio_space_folder='silver'
 ) }}

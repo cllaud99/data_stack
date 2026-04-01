@@ -1,0 +1,164 @@
+version: 2
+
+models:
+
+  - name: stg_cnpj__cnaes
+    description: "CNAEs — Classificação Nacional de Atividades Econômicas. Tabela de domínio."
+    columns:
+      - name: codigo
+        description: "Código CNAE (4 dígitos + 2 de subclasse)."
+        tests: [not_null, unique]
+      - name: descricao
+        description: "Descrição da atividade econômica."
+        tests: [not_null]
+
+  - name: stg_cnpj__motivos
+    description: "Motivos de situação cadastral. Tabela de domínio."
+    columns:
+      - name: codigo
+        description: "Código do motivo."
+        tests: [not_null, unique]
+      - name: descricao
+        description: "Descrição do motivo."
+        tests: [not_null]
+
+  - name: stg_cnpj__municipios
+    description: "Municípios brasileiros. Tabela de domínio."
+    columns:
+      - name: codigo
+        description: "Código do município (tabela Receita Federal, diferente do IBGE)."
+        tests: [not_null, unique]
+      - name: descricao
+        description: "Nome do município."
+        tests: [not_null]
+
+  - name: stg_cnpj__naturezas
+    description: "Naturezas jurídicas. Tabela de domínio."
+    columns:
+      - name: codigo
+        description: "Código da natureza jurídica."
+        tests: [not_null, unique]
+      - name: descricao
+        description: "Descrição da natureza jurídica."
+        tests: [not_null]
+
+  - name: stg_cnpj__paises
+    description: "Países. Tabela de domínio."
+    columns:
+      - name: codigo
+        description: "Código do país (tabela Receita Federal)."
+        tests: [not_null, unique]
+      - name: descricao
+        description: "Nome do país."
+        tests: [not_null]
+
+  - name: stg_cnpj__qualificacoes
+    description: "Qualificações de responsáveis e sócios. Tabela de domínio."
+    columns:
+      - name: codigo
+        description: "Código da qualificação."
+        tests: [not_null, unique]
+      - name: descricao
+        description: "Descrição da qualificação."
+        tests: [not_null]
+
+  - name: stg_cnpj__empresas
+    description: >
+      Dados cadastrais de empresas no nível CNPJ básico (8 dígitos).
+      Uma empresa pode ter vários estabelecimentos — o join é por cnpj_basico.
+    columns:
+      - name: cnpj_basico
+        description: "CNPJ básico — 8 primeiros dígitos. Chave de join com estabelecimentos."
+        tests: [not_null]
+      - name: razao_social
+        description: "Razão social da empresa."
+      - name: cod_natureza_juridica
+        description: "Código da natureza jurídica. FK → stg_cnpj__naturezas.codigo."
+      - name: cod_qualificacao_responsavel
+        description: "Qualificação do responsável. FK → stg_cnpj__qualificacoes.codigo."
+      - name: capital_social
+        description: "Capital social em reais. Convertido de string (vírgula) para DOUBLE."
+      - name: cod_porte_empresa
+        description: "Porte: 00=Não informado, 01=Micro, 03=Pequena, 05=Demais."
+      - name: ente_federativo_responsavel
+        description: "Preenchido apenas para órgãos e entidades do setor público."
+
+  - name: stg_cnpj__estabelecimentos
+    description: >
+      Dados de estabelecimentos (CNPJ completo = 14 dígitos).
+      Cada linha é um estabelecimento único. Join com empresas por cnpj_basico.
+    columns:
+      - name: cnpj_basico
+        description: "8 primeiros dígitos do CNPJ. FK → stg_cnpj__empresas.cnpj_basico."
+        tests: [not_null]
+      - name: cnpj_ordem
+        description: "Dígitos 9-12 do CNPJ — identifica o estabelecimento dentro da empresa."
+      - name: cnpj_dv
+        description: "Dígitos verificadores (13-14) do CNPJ."
+      - name: cnpj
+        description: "CNPJ completo (14 dígitos) — campo derivado: cnpj_basico || cnpj_ordem || cnpj_dv."
+        tests: [not_null, unique]
+      - name: identificador_matriz_filial
+        description: "1=Matriz, 2=Filial."
+      - name: nome_fantasia
+        description: "Nome fantasia do estabelecimento."
+      - name: cod_situacao_cadastral
+        description: "01=Nula, 02=Ativa, 03=Suspensa, 04=Inapta, 08=Baixada."
+      - name: data_situacao_cadastral
+        description: "Data da última alteração de situação cadastral."
+      - name: cod_motivo_situacao_cadastral
+        description: "FK → stg_cnpj__motivos.codigo."
+      - name: cod_pais
+        description: "FK → stg_cnpj__paises.codigo. Preenchido para estabelecimentos no exterior."
+      - name: data_inicio_atividade
+        description: "Data de início de atividade do estabelecimento."
+      - name: cod_cnae_principal
+        description: "CNAE principal. FK → stg_cnpj__cnaes.codigo."
+      - name: cnae_fiscal_secundaria
+        description: "Lista de CNAEs secundários separados por vírgula."
+      - name: uf
+        description: "UF do estabelecimento (2 letras)."
+      - name: cod_municipio
+        description: "FK → stg_cnpj__municipios.codigo."
+      - name: cep
+        description: "CEP do estabelecimento (8 dígitos)."
+
+  - name: stg_cnpj__socios
+    description: "Quadro societário das empresas."
+    columns:
+      - name: cnpj_basico
+        description: "FK → stg_cnpj__empresas.cnpj_basico."
+        tests: [not_null]
+      - name: identificador_socio
+        description: "1=Pessoa Jurídica, 2=Pessoa Física, 3=Estrangeiro."
+      - name: nome_socio_razao_social
+        description: "Nome ou razão social do sócio."
+      - name: cnpj_cpf_socio
+        description: "CPF ou CNPJ do sócio (mascarado)."
+      - name: cod_qualificacao_socio
+        description: "FK → stg_cnpj__qualificacoes.codigo."
+      - name: data_entrada_sociedade
+        description: "Data de entrada na sociedade."
+      - name: cod_pais
+        description: "FK → stg_cnpj__paises.codigo. Preenchido para sócios estrangeiros."
+      - name: cod_faixa_etaria
+        description: "0=Não informado, 1=0-12, 2=13-20, 3=21-30, 4=31-40, 5=41-50, 6=51-60, 7=61-70, 8=71-80, 9=80+."
+
+  - name: stg_cnpj__simples
+    description: "Opção pelo Simples Nacional e MEI por empresa."
+    columns:
+      - name: cnpj_basico
+        description: "FK → stg_cnpj__empresas.cnpj_basico."
+        tests: [not_null, unique]
+      - name: opcao_pelo_simples
+        description: "S=Optante, N=Não optante."
+      - name: data_opcao_simples
+        description: "Data de opção pelo Simples Nacional."
+      - name: data_exclusao_simples
+        description: "Data de exclusão do Simples Nacional."
+      - name: opcao_pelo_mei
+        description: "S=Optante MEI, N=Não optante."
+      - name: data_opcao_mei
+        description: "Data de opção pelo MEI."
+      - name: data_exclusao_mei
+        description: "Data de exclusão do MEI."

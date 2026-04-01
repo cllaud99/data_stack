@@ -1,0 +1,31 @@
+version: 2
+
+sources:
+  - name: bronze_cnpj
+    description: >
+      Dados brutos CNPJ da Receita Federal — Bronze layer.
+      Acessados via VDS Dremio em data_stack/bronze_cnpj/ (criados pelo dremio-init).
+      Fonte original: arquivos.receitafederal.gov.br (WebDAV, snapshot mensal).
+    database: data_stack
+    schema: bronze_cnpj
+    tables:
+      - name: cnaes
+        description: "Classificação Nacional de Atividades Econômicas — tabela de domínio."
+      - name: motivos
+        description: "Motivos de situação cadastral — tabela de domínio."
+      - name: municipios
+        description: "Municípios brasileiros — tabela de domínio."
+      - name: naturezas
+        description: "Naturezas jurídicas — tabela de domínio."
+      - name: paises
+        description: "Países — tabela de domínio."
+      - name: qualificacoes
+        description: "Qualificações de responsáveis e sócios — tabela de domínio."
+      - name: empresas
+        description: "Dados cadastrais de empresas (nível CNPJ básico — 8 dígitos)."
+      - name: estabelecimentos
+        description: "Dados de estabelecimentos (CNPJ completo — 14 dígitos, endereço, atividades)."
+      - name: socios
+        description: "Quadro societário das empresas."
+      - name: simples
+        description: "Opção pelo Simples Nacional e MEI."

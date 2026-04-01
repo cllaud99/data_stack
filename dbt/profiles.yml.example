@@ -1,0 +1,15 @@
+data_stack:
+  outputs:
+    dev:
+      type: dremio
+      software_host: localhost
+      port: 9047
+      user: __DREMIO_USER__
+      password: __DREMIO_PASSWORD__
+      use_ssl: false
+      threads: 8
+      object_storage_source: minio
+      object_storage_path: warehouse
+      dremio_space: data_stack
+      dremio_space_folder: no_schema
+  target: dev

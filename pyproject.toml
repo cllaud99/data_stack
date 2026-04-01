@@ -6,4 +6,6 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "python-pptx>=1.0.2",
+    "dbt-core>=1.9.0",
+    "dbt-dremio>=1.9.0",
 ]

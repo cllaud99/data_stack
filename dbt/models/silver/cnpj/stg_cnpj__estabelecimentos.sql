@@ -1,0 +1,38 @@
+{{ config(materialized='view') }}
+
+SELECT
+    TRIM(cnpj_basico)                                       AS cnpj_basico,
+    TRIM(cnpj_ordem)                                        AS cnpj_ordem,
+    TRIM(cnpj_dv)                                           AS cnpj_dv,
+    TRIM(cnpj_basico) || TRIM(cnpj_ordem) || TRIM(cnpj_dv) AS cnpj,
+    NULLIF(TRIM(identificador_matriz_filial), '')            AS identificador_matriz_filial,
+    NULLIF(TRIM(nome_fantasia), '')                          AS nome_fantasia,
+    NULLIF(TRIM(situacao_cadastral), '')                     AS cod_situacao_cadastral,
+    {{ parse_date_br('data_situacao_cadastral') }}           AS data_situacao_cadastral,
+    NULLIF(TRIM(motivo_situacao_cadastral), '')              AS cod_motivo_situacao_cadastral,
+    NULLIF(TRIM(nome_cidade_exterior), '')                   AS nome_cidade_exterior,
+    NULLIF(TRIM(pais), '')                                   AS cod_pais,
+    {{ parse_date_br('data_inicio_atividade') }}             AS data_inicio_atividade,
+    NULLIF(TRIM(cnae_fiscal_principal), '')                  AS cod_cnae_principal,
+    NULLIF(TRIM(cnae_fiscal_secundaria), '')                 AS cnae_fiscal_secundaria,
+    NULLIF(TRIM(tipo_logradouro), '')                        AS tipo_logradouro,
+    NULLIF(TRIM(logradouro), '')                             AS logradouro,
+    NULLIF(TRIM(numero), '')                                 AS numero,
+    NULLIF(TRIM(complemento), '')                            AS complemento,
+    NULLIF(TRIM(bairro), '')                                 AS bairro,
+    NULLIF(TRIM(cep), '')                                    AS cep,
+    NULLIF(TRIM(uf), '')                                     AS uf,
+    NULLIF(TRIM(municipio), '')                              AS cod_municipio,
+    NULLIF(TRIM(ddd_1), '')                                  AS ddd_1,
+    NULLIF(TRIM(telefone_1), '')                             AS telefone_1,
+    NULLIF(TRIM(ddd_2), '')                                  AS ddd_2,
+    NULLIF(TRIM(telefone_2), '')                             AS telefone_2,
+    NULLIF(TRIM(ddd_fax), '')                                AS ddd_fax,
+    NULLIF(TRIM(fax), '')                                    AS fax,
+    NULLIF(TRIM(email), '')                                  AS email,
+    NULLIF(TRIM(situacao_especial), '')                      AS situacao_especial,
+    {{ parse_date_br('data_situacao_especial') }}            AS data_situacao_especial,
+    _competencia,
+    _data_extracao
+FROM {{ source('bronze_cnpj', 'estabelecimentos') }}
+WHERE NULLIF(TRIM(cnpj_basico), '') IS NOT NULL

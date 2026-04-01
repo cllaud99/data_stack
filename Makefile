@@ -19,6 +19,30 @@ setup: ## Copia .env.example → infra/.env e gera chaves automáticas
 		echo "infra/.env já existe — nenhuma alteração feita"; \
 	fi
 
+# ─── dbt ──────────────────────────────────────────────────────────────────────
+
+dbt-setup: ## Gera dbt/profiles.yml a partir de dbt/profiles.yml.example + infra/.env
+	@DREMIO_USER=$$(grep ^DREMIO_ADMIN_USER infra/.env | cut -d= -f2); \
+	 DREMIO_PASS=$$(grep ^DREMIO_ADMIN_PASSWORD infra/.env | cut -d= -f2); \
+	 sed \
+	   -e "s|__DREMIO_USER__|$$DREMIO_USER|g" \
+	   -e "s|__DREMIO_PASSWORD__|$$DREMIO_PASS|g" \
+	   dbt/profiles.yml.example > dbt/profiles.yml
+	@echo "✓ dbt/profiles.yml gerado"
+
+dbt-promote-bronze: ## Promove pastas Bronze como datasets e cria VDS no Dremio (rodar após ingestão Airflow)
+	docker exec data-stack-dremio-init-1 python /app/dremio_init.py 2>/dev/null || \
+	cd infra && docker compose --profile core --profile analytics run --rm dremio-init
+
+dbt-run: ## Executa dbt run (todos os modelos)
+	cd dbt && uv run dbt run --profiles-dir .
+
+dbt-test: ## Executa dbt test
+	cd dbt && uv run dbt test --profiles-dir .
+
+dbt-docs: ## Gera e serve documentação dbt em localhost:8080
+	cd dbt && uv run dbt docs generate --profiles-dir . && uv run dbt docs serve --profiles-dir .
+
 # ─── Core (sempre rodando) ────────────────────────────────────────────────────
 
 core-up: ## Sobe perfil core (Postgres, Redis, Airflow, MinIO, Redpanda)

@@ -19,6 +19,7 @@ airflow/logs/
 dbt/target/
 dbt/dbt_packages/
 dbt/logs/
+dbt/profiles.yml
 
 # IDE
 .vscode/

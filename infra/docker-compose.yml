@@ -110,11 +110,9 @@ services:
         mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
         mc mb --ignore-existing local/landing;
         mc mb --ignore-existing local/bronze;
-        mc mb --ignore-existing local/silver;
-        mc mb --ignore-existing local/gold;
-        mc mb --ignore-existing local/checkpoints;
         mc mb --ignore-existing local/warehouse;
-        echo 'Buckets criados: landing, bronze, silver, gold, checkpoints, warehouse';
+        echo 'Buckets criados: landing, bronze, warehouse';
+        echo 'Nota: silver/gold/checkpoints removidos — Iceberg (Silver+Gold) vive em warehouse/ via Nessie';
       "
     networks:
       - core-net

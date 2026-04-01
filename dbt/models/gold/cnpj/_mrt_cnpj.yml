@@ -60,7 +60,8 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ["02"]
+              arguments:
+                values: ["02"]
       - name: descricao_cnae_principal
         description: Descrição textual do CNAE principal (join com stg_cnpj__cnaes)
       - name: nome_municipio

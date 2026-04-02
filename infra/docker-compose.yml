@@ -32,6 +32,7 @@ x-airflow-common: &airflow-common
   user: "${AIRFLOW_UID:-50000}:0"
   networks:
     - core-net
+    - analytics-net
   profiles: [core]
   depends_on:
     postgres:
@@ -287,8 +288,8 @@ services:
     environment:
       DREMIO_JAVA_SERVER_EXTRA_OPTS: >-
         -Dpaths.dist=file:///opt/dremio/data/dist
-        -Xmx8g
-        -XX:MaxDirectMemorySize=10g
+        -Xmx6g
+        -XX:MaxDirectMemorySize=6g
     depends_on:
       nessie:
         condition: service_healthy

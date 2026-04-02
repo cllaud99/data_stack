@@ -3,7 +3,9 @@
     object_storage_source='nessie',
     object_storage_path='gold',
     dremio_space='data_stack',
-    dremio_space_folder='gold'
+    dremio_space_folder='gold',
+    partition_by=['uf'],
+    localsort_by=['mes_referencia']
 ) }}
 
 -- Dinâmica mensal de abertura e fechamento de estabelecimentos por UF e CNAE.
@@ -21,12 +23,11 @@ WITH aberturas AS (
         DATE_TRUNC('month', data_inicio_atividade) AS mes_referencia,
         uf,
         cod_cnae_principal,
-        descricao_cnae_principal,
         COUNT(*)                                   AS qtd_aberturas
     FROM {{ ref('int_cnpj__estabelecimentos') }}
     WHERE data_inicio_atividade IS NOT NULL
       AND uf IS NOT NULL
-    GROUP BY 1, 2, 3, 4
+    GROUP BY 1, 2, 3
 ),
 
 fechamentos AS (
@@ -34,7 +35,6 @@ fechamentos AS (
         DATE_TRUNC('month', data_situacao_cadastral) AS mes_referencia,
         uf,
         cod_cnae_principal,
-        descricao_cnae_principal,
         COUNT(*) FILTER (WHERE cod_situacao_cadastral = '08') AS qtd_baixadas,
         COUNT(*) FILTER (WHERE cod_situacao_cadastral = '04') AS qtd_inaptadas,
         COUNT(*) FILTER (WHERE cod_situacao_cadastral = '03') AS qtd_suspensas
@@ -42,15 +42,18 @@ fechamentos AS (
     WHERE cod_situacao_cadastral IN ('03', '04', '08')
       AND data_situacao_cadastral IS NOT NULL
       AND uf IS NOT NULL
-    GROUP BY 1, 2, 3, 4
+    GROUP BY 1, 2, 3
 ),
 
-final AS (
+cnaes AS (
+    SELECT codigo, descricao AS descricao_cnae_principal FROM {{ ref('stg_cnpj__cnaes') }}
+),
+
+agregado AS (
     SELECT
         COALESCE(a.mes_referencia,       f.mes_referencia)       AS mes_referencia,
         COALESCE(a.uf,                   f.uf)                   AS uf,
         COALESCE(a.cod_cnae_principal,   f.cod_cnae_principal)   AS cod_cnae_principal,
-        COALESCE(a.descricao_cnae_principal, f.descricao_cnae_principal) AS descricao_cnae_principal,
 
         COALESCE(a.qtd_aberturas, 0)  AS qtd_aberturas,
         COALESCE(f.qtd_baixadas,  0)  AS qtd_baixadas,
@@ -65,6 +68,14 @@ final AS (
         ON  a.mes_referencia     = f.mes_referencia
         AND a.uf                 = f.uf
         AND a.cod_cnae_principal = f.cod_cnae_principal
+),
+
+final AS (
+    SELECT
+        a.*,
+        c.descricao_cnae_principal
+    FROM agregado a
+    LEFT JOIN cnaes c ON a.cod_cnae_principal = c.codigo
 )
 
 SELECT * FROM final

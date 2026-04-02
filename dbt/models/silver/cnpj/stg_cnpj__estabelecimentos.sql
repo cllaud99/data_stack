@@ -1,4 +1,13 @@
-{{ config(materialized='view') }}
+{{ config(
+    materialized='table',
+    object_storage_source='nessie',
+    object_storage_path='silver',
+    dremio_space='data_stack',
+    dremio_space_folder='silver',
+    partition_by=['uf', '_competencia'],
+    localsort_by=['cod_situacao_cadastral'],
+    post_hook="CREATE OR REPLACE VIEW \"data_stack\".\"silver\".\"stg_cnpj__estabelecimentos\" AS SELECT * FROM nessie.warehouse.silver.stg_cnpj__estabelecimentos AT BRANCH main"
+) }}
 
 SELECT
     TRIM(cnpj_basico)                                       AS cnpj_basico,

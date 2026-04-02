@@ -5,7 +5,9 @@
     object_storage_source='nessie',
     object_storage_path='gold',
     dremio_space='data_stack',
-    dremio_space_folder='gold'
+    dremio_space_folder='gold',
+    partition_by=['uf', 'ano_abertura'],
+    localsort_by=['data_inicio_atividade']
 ) }}
 
 -- Estabelecimentos ativos (situação cadastral 02) com domínios desnormalizados.

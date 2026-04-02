@@ -1,9 +1,18 @@
-{{ config(materialized='view') }}
+{{ config(
+    materialized='table',
+    object_storage_source='nessie',
+    object_storage_path='silver',
+    dremio_space='data_stack',
+    dremio_space_folder='silver',
+    partition_by=['uf', '_competencia'],
+    localsort_by=['cod_situacao_cadastral'],
+    post_hook="CREATE OR REPLACE VIEW \"data_stack\".\"silver\".\"int_cnpj__estabelecimentos\" AS SELECT * FROM nessie.warehouse.silver.int_cnpj__estabelecimentos AT BRANCH main"
+) }}
 
--- Passthrough limpo da stg com CNPJ completo derivado.
--- Sem joins — mantém o modelo leve para filter pushdown do Dremio.
+-- Passthrough limpo da stg com subconjunto de colunas relevantes para as Gold.
+-- Sem joins — o stg já é uma tabela Iceberg materializada com estatísticas.
 -- Os joins de domínio (empresas, simples, municipios, cnaes etc.)
--- acontecem nos mrt_* APÓS o filtro de negócio, evitando OOM no hash join.
+-- acontecem nos mrt_* APÓS o filtro de negócio.
 
 SELECT
     -- Identificação
